@@ -18,8 +18,7 @@ const StudentList = ({ students, deleteStudent, selectStudent, showToast }) => {
                     <button
                         onClick={() => {
                             try {
-                                //s.id
-                                deleteStudent();
+                                deleteStudent(s.id);
                             } catch (error) {
                                 logger.error("Delete failed", error);
                                 showToast("Failed to delete student");
