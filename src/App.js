@@ -5,7 +5,7 @@ import Toast from "./components/Toast";
 import { logger } from "./utils/logger";
 
 function App() {
-  const [students, setStudents] = useState(null); // ISSUE
+  const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [toast, setToast] = useState({ message: "", type: "error" });
 
@@ -20,7 +20,7 @@ function App() {
   useEffect(() => {
     try {
       const data = JSON.parse(localStorage.getItem("students"));
-      setStudents(data);
+      if (data) setStudents(data);
       logger.info("Loaded students", data);
     } catch (error) {
       logger.error("Load failed", error);
@@ -30,7 +30,9 @@ function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem("students", JSON.stringify(students));
+      if (students && students.length > 0) {
+        localStorage.setItem("students", JSON.stringify(students));
+      }
     } catch (error) {
       logger.error("Save failed", error);
       showToast("Failed to save students to storage");
@@ -39,7 +41,7 @@ function App() {
 
   const addStudent = (student) => {
     try {
-      setStudents([...(students || []), student]); // ISSUE
+      setStudents([...students, student]);
     } catch (error) {
       logger.error("Add failed", error);
       showToast("Failed to add student");
