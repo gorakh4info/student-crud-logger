@@ -4,8 +4,11 @@ const logToStorage = (entry) => {
     localStorage.setItem("logs", JSON.stringify(logs));
 };
 
+const REPO_NAME = "student-crud-logger";
+
 const log = (level, message, data = null) => {
     const entry = {
+        repo: REPO_NAME,
         level,
         message,
         data,

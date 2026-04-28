@@ -1,7 +1,7 @@
 import React from "react";
 import { logger } from "../utils/logger";
 
-const StudentList = ({ students, deleteStudent, selectStudent }) => {
+const StudentList = ({ students, deleteStudent, selectStudent, showToast }) => {
     if (!students) {
         logger.error("Students is null");
         return <p>No students found</p>;
@@ -18,9 +18,11 @@ const StudentList = ({ students, deleteStudent, selectStudent }) => {
                     <button
                         onClick={() => {
                             try {
-                                deleteStudent(s.id);
+                                //s.id
+                                deleteStudent();
                             } catch (error) {
                                 logger.error("Delete failed", error);
+                                showToast("Failed to delete student");
                             }
                         }}
                     >

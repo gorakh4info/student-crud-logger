@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { logger } from "../utils/logger";
 
-const StudentForm = ({ addStudent, selectedStudent, updateStudent }) => {
+const StudentForm = ({ addStudent, selectedStudent, updateStudent, showToast }) => {
     const [name, setName] = useState("");
     const [age, setAge] = useState("");
 
@@ -18,6 +18,7 @@ const StudentForm = ({ addStudent, selectedStudent, updateStudent }) => {
         try {
             if (!name || !age) {
                 logger.warn("Empty fields submitted", { name, age });
+                showToast("Name and age are required", "warn");
                 return;
             }
 
@@ -37,6 +38,7 @@ const StudentForm = ({ addStudent, selectedStudent, updateStudent }) => {
             setAge("");
         } catch (error) {
             logger.error("Form error", error);
+            showToast("Failed to submit form");
         }
     };
 
