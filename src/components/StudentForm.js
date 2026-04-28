@@ -23,7 +23,7 @@ const StudentForm = ({ addStudent, selectedStudent, updateStudent, showToast }) 
             }
 
             const student = {
-                id: Date.now(), // ISSUE: new ID on update
+                id: selectedStudent ? selectedStudent.id : Date.now(),
                 name,
                 age,
             };
