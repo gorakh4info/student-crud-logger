@@ -20,9 +20,9 @@ const StudentForm = ({ addStudent, selectedStudent, updateStudent, showToast, on
         e.preventDefault();
 
         try {
-            if (!name || !age || !email || !fees) {
+            if (!name || !age || !email) {
                 logger.warn("Empty fields submitted", { name, age, email, fees });
-                showToast("All fields are required", "warn");
+                showToast("Name, age and email are required", "warn");
                 return;
             }
 

@@ -1,17 +1,14 @@
 const express = require("express");
 const router = express.Router();
-const { sql, connect } = require("../db");
+const db = require("../db");
+
+const SELECT = `SELECT Id as id, Name as name, Age as age, Email as email, Fees as fees FROM StudentFees`;
 
 // GET all students
-router.get("/", async (req, res) => {
+router.get("/", (req, res) => {
   try {
-    const pool = await connect();
-    const result = await pool.request().query(`
-      SELECT Id as id, Name as name, Age as age, Email as email, Fees as fees
-      FROM StudentFees
-      ORDER BY Id
-    `);
-    res.json(result.recordset);
+    const students = db.prepare(`${SELECT} ORDER BY Id`).all();
+    res.json(students);
   } catch (err) {
     console.error("GET /students failed:", err.message);
     res.status(500).json({ error: err.message });
@@ -19,24 +16,14 @@ router.get("/", async (req, res) => {
 });
 
 // POST create a student
-router.post("/", async (req, res) => {
+router.post("/", (req, res) => {
   const { name, age, email, fees } = req.body;
   try {
-    const pool = await connect();
-    const result = await pool
-      .request()
-      .input("name", sql.NVarChar(100), name)
-      .input("age", sql.Int, parseInt(age))
-      .input("email", sql.NVarChar(200), email)
-      .input("fees", sql.Decimal(10, 2), parseFloat(fees))
-      .query(`
-        INSERT INTO StudentFees (Name, Age, Email, Fees)
-        OUTPUT INSERTED.Id as id, INSERTED.Name as name,
-               INSERTED.Age as age, INSERTED.Email as email,
-               INSERTED.Fees as fees
-        VALUES (@name, @age, @email, @fees)
-      `);
-    res.status(201).json(result.recordset[0]);
+    const result = db
+      .prepare("INSERT INTO StudentFees (Name, Age, Email, Fees) VALUES (?, ?, ?, ?)")
+      .run(name, parseInt(age), email, parseFloat(fees));
+    const student = db.prepare(`${SELECT} WHERE Id = ?`).get(result.lastInsertRowid);
+    res.status(201).json(student);
   } catch (err) {
     console.error("POST /students failed:", err.message);
     res.status(500).json({ error: err.message });
@@ -44,44 +31,28 @@ router.post("/", async (req, res) => {
 });
 
 // PUT update a student
-router.put("/:id", async (req, res) => {
-  const { id } = req.params;
+router.put("/:id", (req, res) => {
+  const id = parseInt(req.params.id);
   const { name, age, email, fees } = req.body;
   try {
-    const pool = await connect();
-    const result = await pool
-      .request()
-      .input("id", sql.Int, parseInt(id))
-      .input("name", sql.NVarChar(100), name)
-      .input("age", sql.Int, parseInt(age))
-      .input("email", sql.NVarChar(200), email)
-      .input("fees", sql.Decimal(10, 2), parseFloat(fees))
-      .query(`
-        UPDATE StudentFees
-        SET Name = @name, Age = @age, Email = @email, Fees = @fees
-        OUTPUT INSERTED.Id as id, INSERTED.Name as name,
-               INSERTED.Age as age, INSERTED.Email as email,
-               INSERTED.Fees as fees
-        WHERE Id = @id
-      `);
-    if (!result.recordset.length)
+    const result = db
+      .prepare("UPDATE StudentFees SET Name = ?, Age = ?, Email = ?, Fees = ? WHERE Id = ?")
+      .run(name, parseInt(age), email, parseFloat(fees), id);
+    if (result.changes === 0)
       return res.status(404).json({ error: "Student not found" });
-    res.json(result.recordset[0]);
+    const student = db.prepare(`${SELECT} WHERE Id = ?`).get(id);
+    res.json(student);
   } catch (err) {
-    console.error(`PUT /students/${id} failed:`, err.message);
+    console.error(`PUT /students/${req.params.id} failed:`, err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
 // DELETE a student
-router.delete("/:id", async (req, res) => {
-  const { id } = req.params;
+router.delete("/:id", (req, res) => {
+  const id = parseInt(req.params.id);
   try {
-    const pool = await connect();
-    await pool
-      .request()
-      .input("id", sql.Int, parseInt(id))
-      .query("DELETE FROM StudentFees WHERE Id = @id");
+    db.prepare("DELETE FROM StudentFees WHERE Id = ?").run(id);
     res.status(204).send();
   } catch (err) {
     console.error(`DELETE /students/${id} failed:`, err.message);
