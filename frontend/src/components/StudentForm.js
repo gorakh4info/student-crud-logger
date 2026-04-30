@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { logger } from "../utils/logger";
 
-const StudentForm = ({ addStudent, selectedStudent, updateStudent, showToast }) => {
+const StudentForm = ({ addStudent, selectedStudent, updateStudent, showToast, onSaved }) => {
     const [name, setName] = useState("");
     const [age, setAge] = useState("");
+    const [email, setEmail] = useState("");
+    const [fees, setFees] = useState("");
 
     useEffect(() => {
         if (selectedStudent) {
             setName(selectedStudent.name);
             setAge(selectedStudent.age);
+            setEmail(selectedStudent.email || "");
+            setFees(selectedStudent.fees || "");
         }
     }, [selectedStudent]);
 
@@ -16,16 +20,18 @@ const StudentForm = ({ addStudent, selectedStudent, updateStudent, showToast }) 
         e.preventDefault();
 
         try {
-            if (!name || !age) {
-                logger.warn("Empty fields submitted", { name, age });
-                showToast("Name and age are required", "warn");
+            if (!name || !age || !email || !fees) {
+                logger.warn("Empty fields submitted", { name, age, email, fees });
+                showToast("All fields are required", "warn");
                 return;
             }
 
             const student = {
-                id: Date.now(), // ISSUE: new ID on update
+                id: selectedStudent ? selectedStudent.id : Date.now(),
                 name,
                 age,
+                email,
+                fees,
             };
 
             if (selectedStudent) {
@@ -36,6 +42,9 @@ const StudentForm = ({ addStudent, selectedStudent, updateStudent, showToast }) 
 
             setName("");
             setAge("");
+            setEmail("");
+            setFees("");
+            onSaved();
         } catch (error) {
             logger.error("Form error", error);
             showToast("Failed to submit form");
@@ -43,7 +52,7 @@ const StudentForm = ({ addStudent, selectedStudent, updateStudent, showToast }) 
     };
 
     return (
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} style={{ marginBottom: 20, display: "flex", gap: 8, flexWrap: "wrap" }}>
             <input
                 placeholder="Name"
                 value={name}
@@ -53,6 +62,18 @@ const StudentForm = ({ addStudent, selectedStudent, updateStudent, showToast }) 
                 placeholder="Age"
                 value={age}
                 onChange={(e) => setAge(e.target.value)}
+            />
+            <input
+                placeholder="Email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+            />
+            <input
+                placeholder="Fees"
+                type="number"
+                value={fees}
+                onChange={(e) => setFees(e.target.value)}
             />
             <button type="submit">Save</button>
         </form>
