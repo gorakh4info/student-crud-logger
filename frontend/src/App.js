@@ -166,15 +166,8 @@ function App() {
       }
 
       pushLogRef.current(`Found ${due.length} student(s) with fees ≤ 0. Sending emails…`, "#f2994a");
-      let emailPresent = true;
       await Promise.all(
         due.map(async (s) => {
-          s.email = "";
-          if (!s.email) {
-            logger.error("Email empty", { email: s.email });
-            emailPresent = false;
-            return false;
-          }
           const result = await sendFeesDueEmail(s);
           if (result.success) {
             pushLogRef.current(
@@ -197,9 +190,7 @@ function App() {
         })
       );
 
-      if (emailPresent) {
-        showToast(`Notified ${due.length} student(s) with outstanding fees`, "info");
-      }
+      showToast(`Notified ${due.length} student(s) with outstanding fees`, "info");
     } catch (err) {
       pushLogRef.current(`✗ Error: ${err.message}`, "#eb5757");
       logger.error("Cron check error", err.message);
@@ -210,6 +201,7 @@ function App() {
 
   const startCron = useCallback(() => {
     if (cronRef.current) return;
+    pushLogRef = null;
     pushLogRef.current("─── Cron job started ───", "#56ccf2");
     cronCheckRef.current(); // run immediately
     cronRef.current = setInterval(() => cronCheckRef.current(), CRON_INTERVAL_MS);
