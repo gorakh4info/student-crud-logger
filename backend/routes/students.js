@@ -4,6 +4,8 @@ const db = require("../db");
 
 const SELECT = `SELECT Id as id, Name as name, Age as age, Email as email, Fees as fees FROM StudentFees`;
 
+const toFees = (val) => (val !== undefined && val !== "" && val !== null ? parseFloat(val) : null);
+
 // GET all students
 router.get("/", (req, res) => {
   try {
@@ -21,7 +23,7 @@ router.post("/", (req, res) => {
   try {
     const result = db
       .prepare("INSERT INTO StudentFees (Name, Age, Email, Fees) VALUES (?, ?, ?, ?)")
-      .run(name, parseInt(age), email, parseFloat(fees));
+      .run(name, parseInt(age), email, toFees(fees));
     const student = db.prepare(`${SELECT} WHERE Id = ?`).get(result.lastInsertRowid);
     res.status(201).json(student);
   } catch (err) {
@@ -37,7 +39,7 @@ router.put("/:id", (req, res) => {
   try {
     const result = db
       .prepare("UPDATE StudentFees SET Name = ?, Age = ?, Email = ?, Fees = ? WHERE Id = ?")
-      .run(name, parseInt(age), email, parseFloat(fees), id);
+      .run(name, parseInt(age), email, toFees(fees), id);
     if (result.changes === 0)
       return res.status(404).json({ error: "Student not found" });
     const student = db.prepare(`${SELECT} WHERE Id = ?`).get(id);
