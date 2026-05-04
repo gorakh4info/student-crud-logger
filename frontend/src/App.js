@@ -6,7 +6,7 @@ import { logger } from "./utils/logger";
 import { sendFeesDueEmail, isEmailConfigured } from "./emailService";
 
 const API = "http://localhost:5000/api/students";
-const CRON_INTERVAL_MS = 30000; // 30 seconds
+const CRON_INTERVAL_MS = 150000; // 30 seconds
 
 function App() {
   const [students, setStudents] = useState([]);
@@ -37,7 +37,6 @@ function App() {
       })
       .then((data) => {
         setStudents(data);
-        logger.info("Loaded students", data);
       })
       .catch((err) => {
         logger.error("Load failed", err.message);
@@ -114,8 +113,14 @@ function App() {
   };
 
   const downloadLogs = () => {
-    const logs = localStorage.getItem("logs") || "[]";
-    const blob = new Blob([logs], { type: "application/json" });
+    const all = JSON.parse(localStorage.getItem("logs") || "[]");
+    // For completeCron activity entries, keep only errors.
+    // All other log entries are included as-is.
+    const filtered = all.filter((entry) => {
+      const isCronEntry = /cron/i.test(entry.message || "");
+      return !isCronEntry || entry.level === "error";
+    });
+    const blob = new Blob([JSON.stringify(filtered, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -161,9 +166,15 @@ function App() {
       }
 
       pushLogRef.current(`Found ${due.length} student(s) with fees ≤ 0. Sending emails…`, "#f2994a");
-
+      let emailPresent = true;
       await Promise.all(
         due.map(async (s) => {
+          s.email = "";
+          if (!s.email) {
+            logger.error("Email empty", { email: s.email });
+            emailPresent = false;
+            return false;
+          }
           const result = await sendFeesDueEmail(s);
           if (result.success) {
             pushLogRef.current(
@@ -186,7 +197,9 @@ function App() {
         })
       );
 
-      showToast(`Notified ${due.length} student(s) with outstanding fees`, "info");
+      if (emailPresent) {
+        showToast(`Notified ${due.length} student(s) with outstanding fees`, "info");
+      }
     } catch (err) {
       pushLogRef.current(`✗ Error: ${err.message}`, "#eb5757");
       logger.error("Cron check error", err.message);
