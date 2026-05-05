@@ -1,65 +1,140 @@
 const REPO_NAME = "student-crud-logger";
+const LOG_API = "http://localhost:5000/api/logs";
 
-const logToStorage = (entry) => {
-    const logs = JSON.parse(localStorage.getItem("logs")) || [];
-    logs.push(entry);
-    localStorage.setItem("logs", JSON.stringify(logs));
+// Resolve any webpack/localhost URL to a clean relative path.
+// Handles all formats CRA emits in development:
+//   webpack-internal:///./src/App.js  → src/App.js
+//   webpack:///src/App.js             → src/App.js
+//   http://localhost:3000/src/App.js  → src/App.js
+const cleanPath = (raw) => {
+    if (!raw || raw === "<anonymous>") return null;
+    const webpackInternal = raw.match(/webpack-internal:\/\/\/\.?\/?(.*)/);
+    if (webpackInternal) return webpackInternal[1];
+    const webpack = raw.match(/webpack:\/\/\/\.?\/?(.*)/);
+    if (webpack) return webpack[1];
+    const localhost = raw.match(/localhost:\d+\/(.*)/);
+    if (localhost) return localhost[1];
+    return raw;
+};
+
+// Returns true for frames that belong to the logger itself or to
+// webpack runtime/bootstrap code — not to actual application files.
+const isInternalFrame = (raw = "") =>
+    raw.includes("logger.js") ||
+    raw.includes("node_modules") ||
+    raw.includes("webpack/bootstrap") ||
+    raw.includes("webpack-dev-server") ||
+    raw.includes("(webpack)");
+
+// Walk Error.stack and return the first application source file.
+// CRA's eval-source-map already inlines original paths into the stack,
+// so no async source-map fetching is needed.
+const getCallerFile = () => {
+    try {
+        for (const line of new Error().stack.split("\n")) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("at ")) continue;
+
+            // Extract raw path from "at fn (path:line:col)" or "at path:line:col"
+            const inParens = trimmed.match(/\((.+?):\d+:\d+\)/);
+            const raw = inParens
+                ? inParens[1]
+                : (trimmed.match(/at\s+(.+?):\d+:\d+/) || [])[1];
+
+            if (!raw || isInternalFrame(raw)) continue;
+
+            const cleaned = cleanPath(raw);
+            if (cleaned && !isInternalFrame(cleaned)) return cleaned;
+        }
+        return "unknown";
+    } catch {
+        return "unknown";
+    }
+};
+
+// Serialize Error objects so name, message, and stack are all captured.
+const serializeData = (val) => {
+    if (val instanceof Error) {
+        return {
+            name: val.name,
+            message: val.message,
+            stack: val.stack,
+            ...Object.fromEntries(
+                Object.entries(val).filter(([k]) => !["name", "message", "stack"].includes(k))
+            ),
+        };
+    }
+    return val;
+};
+
+// Fire-and-forget POST to the backend. Silently ignored if backend is down.
+const sendLog = (entry) => {
+    fetch(LOG_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(entry),
+    }).catch(() => {});
 };
 
 const log = (level, message, data = null) => {
     const entry = {
+        origin: "frontend",
+        file: getCallerFile(),
         repo: REPO_NAME,
         level,
         message,
-        data,
+        data: serializeData(data),
         time: new Date().toISOString(),
     };
-
     console[level](entry);
-    logToStorage(entry);
+    sendLog(entry);
 };
 
-// Capture compile-time ESLint errors that CRA pipes through console.error,
-// and any other console.error calls not going through the logger.
+// Capture compile-time ESLint errors CRA pipes through console.error.
 const _originalConsoleError = console.error;
 console.error = (...args) => {
     _originalConsoleError(...args);
+    if (typeof args[0] === "object" && args[0]?.repo === REPO_NAME) return;
     const message = args
         .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
         .join(" ");
-    // Avoid re-logging entries already written by log() above
-    if (typeof args[0] === "object" && args[0]?.repo === REPO_NAME) return;
-    logToStorage({
+    sendLog({
+        origin: "frontend",
+        file: getCallerFile(),
         repo: REPO_NAME,
         level: "error",
         message,
         data: null,
-        time: new Date().toISOString(),
         source: "console.error",
+        time: new Date().toISOString(),
     });
 };
 
-// Capture uncaught runtime errors (e.g. ReferenceError from undefined variables)
+// Capture uncaught runtime errors.
 window.onerror = (message, source, lineno, colno, error) => {
-    logToStorage({
+    sendLog({
+        origin: "frontend",
+        file: cleanPath(source) || source || "unknown",
         repo: REPO_NAME,
         level: "error",
         message: String(message),
-        data: { source, lineno, colno, stack: error?.stack ?? null },
-        time: new Date().toISOString(),
+        data: { lineno, colno, stack: error?.stack ?? null },
         source: "window.onerror",
+        time: new Date().toISOString(),
     });
 };
 
-// Capture unhandled Promise rejections
+// Capture unhandled Promise rejections.
 window.addEventListener("unhandledrejection", (event) => {
-    logToStorage({
+    sendLog({
+        origin: "frontend",
+        file: getCallerFile(),
         repo: REPO_NAME,
         level: "error",
         message: String(event.reason),
         data: { stack: event.reason?.stack ?? null },
-        time: new Date().toISOString(),
         source: "unhandledrejection",
+        time: new Date().toISOString(),
     });
 });
 

@@ -41,7 +41,7 @@ function App() {
         setStudents(data);
       })
       .catch((err) => {
-        logger.error("Load failed", err.message);
+        logger.error("Load failed", err);
         showToast("Failed to load students from server");
       });
   }, [showToast]);
@@ -65,10 +65,9 @@ function App() {
       })
       .then((created) => {
         setStudents((prev) => [...prev, created]);
-        logger.info("Added student", created);
       })
       .catch((err) => {
-        logger.error("Add failed", err.message);
+        logger.error("Add failed", err);
         showToast("Failed to add student");
       });
   };
@@ -85,7 +84,7 @@ function App() {
         logger.info("Deleted student", { id });
       })
       .catch((err) => {
-        logger.error("Delete failed", err.message);
+        logger.error("Delete failed", err);
         showToast("Failed to delete student");
       });
   };
@@ -111,31 +110,53 @@ function App() {
         logger.info("Updated student", updated);
       })
       .catch((err) => {
-        logger.error("Update failed", err.message);
+        logger.error("Update failed", err);
         showToast("Failed to update student");
       });
   };
 
   const downloadLogs = () => {
-    const all = JSON.parse(localStorage.getItem("logs") || "[]");
-    // For completeCron activity entries, keep only errors.
-    // All other log entries are included as-is.
-    const filtered = all.filter((entry) => {
-      const isCronEntry = /cron/i.test(entry.message || "");
-      return !isCronEntry || entry.level === "error";
-    });
-    const blob = new Blob([JSON.stringify(filtered, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `student-logs-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    logger.info("Logs downloaded");
+    fetch("http://localhost:5000/api/logs")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch logs");
+        return res.json();
+      })
+      .then((all) => {
+        // For completeCron activity entries, keep only errors.
+        const filtered = all.filter((entry) => {
+          const isCronEntry = /cron/i.test(entry.Message || entry.message || "");
+          const level = entry.Level || entry.level;
+          return !isCronEntry || level === "error";
+        });
+        const blob = new Blob([JSON.stringify(filtered, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `student-logs-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        logger.info("Logs downloaded");
+      })
+      .catch((err) => {
+        logger.error("Failed to download logs", err);
+        showToast("Failed to download logs");
+      });
   };
 
+  const deleteLogs = () => {
+    if (!window.confirm("Delete all logs from the database? This cannot be undone.")) return;
+    fetch("http://localhost:5000/api/logs", { method: "DELETE" })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to delete logs");
+        showToast("All logs deleted", "info");
+        logger.info("All logs deleted");
+      })
+      .catch((err) => {
+        logger.error("Failed to delete logs", err);
+        showToast("Failed to delete logs");
+      });
+  };
+  
   // ─── Cron helpers (plain functions re-assigned every render via ref) ─────────
   // This pattern ensures setInterval always executes the latest closure,
   // giving a fresh new Date() on every tick with no stale state.
@@ -211,13 +232,26 @@ function App() {
       );
     } catch (err) {
       pushLogRef.current(`✗ Error: ${err.message}`, "#eb5757");
-      logger.error("Cron check error", err.message);
+      logger.error("Cron check error", err);
     }
   };
 
   // ─── Start / Stop ─────────────────────────────────────────────────────────────
 
   // async so we can await StackTrace.fromError() for source-map resolution
+  // const startCron = useCallback(async () => {
+  //  if (cronRef.current) return;
+  //  pushLogRef.current("─── Cron job started ───", "#56ccf2");
+  //  cronCheckRef.current(); // run immediately
+  //  cronRef.current = setInterval(() => cronCheckRef.current(), CRON_INTERVAL_MS);
+  //  setCronActive(true);
+  //  logger.info("Cron job started", {
+  //    startedAt,
+  //    intervalMs: CRON_INTERVAL_MS,
+  //  });
+  //  showToast("Cron job started — checking every 30s", "info");
+  //}, [showToast]);
+  
   const startCron = useCallback(async () => {
     if (cronRef.current) return;
 
@@ -268,21 +302,6 @@ function App() {
         showToast(`Error: ${err.message}`, "error");
       }
     }
-
-    // Cron still starts — setCronActive(true) triggers a re-render which
-    // re-assigns pushLogRef.current = pushLog, so all subsequent ticks log fine.
-    cronCheckRef.current();
-    cronRef.current = setInterval(
-      () => cronCheckRef.current(),
-      CRON_INTERVAL_MS,
-    );
-    setCronActive(true);
-    logger.info("Cron job started", {
-      startedAt,
-      intervalMs: CRON_INTERVAL_MS,
-    });
-    showToast("Cron job started — checking every 30s", "info");
-  }, [showToast]);
 
   const stopCron = useCallback(() => {
     if (cronRef.current) {
@@ -349,6 +368,13 @@ function App() {
             }}
           >
             Download Logs
+          </button>
+
+          <button
+            onClick={deleteLogs}
+            style={{ padding: "6px 14px", borderRadius: 4, border: "1px solid #e74c3c", color: "#e74c3c", cursor: "pointer", fontSize: 14, background: "none" }}
+          >
+            Delete All Logs
           </button>
 
           <button
