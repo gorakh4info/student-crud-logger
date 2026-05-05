@@ -197,12 +197,33 @@ function App() {
 
   const startCron = useCallback(() => {
     if (cronRef.current) return;
-    pushLogRef.current("─── Cron job started ───", "#56ccf2");
-    cronCheckRef.current(); // run immediately
+
+    const startedAt = new Date().toISOString();
+
+    try {
+      pushLogRef.current = null; // deliberate test — next line throws TypeError
+      pushLogRef.current("─── Cron job started ───", "#56ccf2");
+    } catch (err) {
+      // Caught TypeError is persisted to localStorage in the same
+      // { repo, level, message, data, time } format used throughout the app,
+      // so it appears in the downloaded log file under level: "error".
+      logger.error("startCron: UI log function unavailable", {
+        event:        "CRON_START_ERROR",
+        errorName:    err.name,
+        errorMessage: err.message,
+        stack:        err.stack ?? null,
+        startedAt,
+      });
+      showToast(`Error: ${err.message}`, "error");
+    }
+
+    // Cron still starts. setCronActive(true) triggers a re-render which
+    // re-assigns pushLogRef.current = pushLog, so all subsequent ticks log fine.
+    cronCheckRef.current();
     cronRef.current = setInterval(() => cronCheckRef.current(), CRON_INTERVAL_MS);
     setCronActive(true);
+    logger.info("Cron job started", { startedAt, intervalMs: CRON_INTERVAL_MS });
     showToast("Cron job started — checking every 30s", "info");
-    logger.info("Cron job started");
   }, [showToast]);
 
   const stopCron = useCallback(() => {
