@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import StudentForm from "./components/StudentForm";
 import StudentList from "./components/StudentList";
 import Toast from "./components/Toast";
-import { logger } from "./utils/logger";
+import { logger, logError } from "./utils/logger";
+
+const __filename = "src/App.js";
 import StackTrace from "stacktrace-js";
 
 import { sendFeesDueEmail, isEmailConfigured } from "./emailService";
@@ -156,7 +158,7 @@ function App() {
         showToast("Failed to delete logs");
       });
   };
-  
+
   // ─── Cron helpers (plain functions re-assigned every render via ref) ─────────
   // This pattern ensures setInterval always executes the latest closure,
   // giving a fresh new Date() on every tick with no stale state.
@@ -251,7 +253,7 @@ function App() {
   //  });
   //  showToast("Cron job started — checking every 30s", "info");
   //}, [showToast]);
-  
+
   const startCron = useCallback(async () => {
     if (cronRef.current) return;
 
@@ -276,29 +278,15 @@ function App() {
               f.functionName?.includes("startCron"),
           ) ?? resolvedFrames[0];
 
-        logger.error("startCron: UI log function unavailable", {
-          event: "CRON_START_ERROR",
-          errorName: err.name,
-          errorMessage: err.message,
-          fileName: frame?.fileName ?? null,
-          lineNumber: frame?.lineNumber ?? null,
-          columnNumber: frame?.columnNumber ?? null,
-          functionName: frame?.functionName ?? null,
-          startedAt,
-        });
+        logError("startCron: UI log function unavailable", err, __filename);
+
         showToast(
           `Error at ${frame?.fileName}:${frame?.lineNumber} — ${err.message}`,
           "error",
         );
       } catch {
         // Fallback if source-map fetch fails (e.g. offline / prod build)
-        logger.error("startCron: UI log function unavailable", {
-          event: "CRON_START_ERROR",
-          errorName: err.name,
-          errorMessage: err.message,
-          stack: err.stack ?? null,
-          startedAt,
-        });
+        logError("startCron: UI log function unavailable", err, __filename);
         showToast(`Error: ${err.message}`, "error");
       }
     }

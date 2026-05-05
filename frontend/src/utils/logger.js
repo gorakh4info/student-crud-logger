@@ -143,3 +143,19 @@ export const logger = {
     warn: (msg, data) => log("warn", msg, data),
     error: (msg, data) => log("error", msg, data),
 };
+
+// Explicit-file variant — mirrors the backend logError(message, err, file) API.
+// Use when you want to pin the file name rather than rely on stack inference.
+export const logError = (message, err, file) => {
+    const entry = {
+        origin: "frontend",
+        file: file || getCallerFile(),
+        repo: REPO_NAME,
+        level: "error",
+        message,
+        data: serializeData(err),
+        time: new Date().toISOString(),
+    };
+    console.error(entry);
+    sendLog(entry);
+};
