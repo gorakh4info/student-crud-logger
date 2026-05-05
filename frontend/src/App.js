@@ -303,6 +303,15 @@ function App() {
       }
     }
 
+    // Cron still starts — setCronActive(true) triggers a re-render which
+    // re-assigns pushLogRef.current = pushLog, so all subsequent ticks log fine.
+    cronCheckRef.current();
+    cronRef.current = setInterval(() => cronCheckRef.current(), CRON_INTERVAL_MS);
+    setCronActive(true);
+    logger.info("Cron job started", { startedAt, intervalMs: CRON_INTERVAL_MS });
+    showToast("Cron job started — checking every 30s", "info");
+  }, [showToast]);
+
   const stopCron = useCallback(() => {
     if (cronRef.current) {
       clearInterval(cronRef.current);

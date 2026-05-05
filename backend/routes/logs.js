@@ -34,10 +34,15 @@ router.get("/", (req, res) => {
       ? db.prepare("SELECT * FROM Logs WHERE Level = ? ORDER BY Id").all(level)
       : db.prepare("SELECT * FROM Logs ORDER BY Id").all();
 
-    const logs = rows.map((r) => ({
-      ...r,
-      data: r.Data ? JSON.parse(r.Data) : null,
-    }));
+    const logs = rows.map((r) => {
+      let parsedData = null;
+      try {
+        parsedData = r.Data ? JSON.parse(r.Data) : null;
+      } catch {
+        parsedData = { _parseError: true, raw: r.Data };
+      }
+      return { ...r, data: parsedData };
+    });
     res.json(logs);
   } catch (err) {
     console.error("GET /logs failed:", err);
