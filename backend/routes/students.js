@@ -1,8 +1,23 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
+const { logError } = require("../logger");
 
 const SELECT = `SELECT Id as id, Name as name, Age as age, Email as email, Fees as fees FROM StudentFees`;
+
+const toFees = (val) =>
+  val !== undefined && val !== "" && val !== null ? parseFloat(val) : null;
+
+const serializeError = (err, file = __filename) => ({
+  origin: "backend",
+  file,
+  name: err.name,
+  message: err.message,
+  stack: err.stack,
+  ...Object.fromEntries(
+    Object.entries(err).filter(([k]) => !["name", "message", "stack"].includes(k))
+  ),
+});
 
 // GET all students
 router.get("/", (req, res) => {
@@ -10,7 +25,8 @@ router.get("/", (req, res) => {
     const students = db.prepare(`${SELECT} ORDER BY Id`).all();
     res.json(students);
   } catch (err) {
-    console.error("GET /students failed:", err.message);
+    logError("GET /students failed", err, __filename);
+    console.error("GET /students failed:", serializeError(err));
     res.status(500).json({ error: err.message });
   }
 });
@@ -21,11 +37,14 @@ router.post("/", (req, res) => {
   try {
     const result = db
       .prepare("INSERT INTO StudentFees (Name, Age, Email, Fees) VALUES (?, ?, ?, ?)")
-      .run(name, parseInt(age), email, parseFloat(fees));
+      .run(name, parseInt(age), email, toFees(fees));
+    // I purpose fully added this error please do not remove this
+    result = null;
     const student = db.prepare(`${SELECT} WHERE Id = ?`).get(result.lastInsertRowid);
     res.status(201).json(student);
   } catch (err) {
-    console.error("POST /students failed:", err.message);
+    logError("POST /students failed", err, __filename);
+    console.error("POST /students failed:", serializeError(err));
     res.status(500).json({ error: err.message });
   }
 });
@@ -37,13 +56,14 @@ router.put("/:id", (req, res) => {
   try {
     const result = db
       .prepare("UPDATE StudentFees SET Name = ?, Age = ?, Email = ?, Fees = ? WHERE Id = ?")
-      .run(name, parseInt(age), email, parseFloat(fees), id);
+      .run(name, parseInt(age), email, toFees(fees), id);
     if (result.changes === 0)
       return res.status(404).json({ error: "Student not found" });
     const student = db.prepare(`${SELECT} WHERE Id = ?`).get(id);
     res.json(student);
   } catch (err) {
-    console.error(`PUT /students/${req.params.id} failed:`, err.message);
+    logError(`PUT /students/${id} failed`, err, __filename);
+    console.error(`PUT /students/${id} failed:`, serializeError(err));
     res.status(500).json({ error: err.message });
   }
 });
@@ -55,7 +75,8 @@ router.delete("/:id", (req, res) => {
     db.prepare("DELETE FROM StudentFees WHERE Id = ?").run(id);
     res.status(204).send();
   } catch (err) {
-    console.error(`DELETE /students/${id} failed:`, err.message);
+    logError(`DELETE /students/${id} failed`, err, __filename);
+    console.error(`DELETE /students/${id} failed:`, serializeError(err));
     res.status(500).json({ error: err.message });
   }
 });
