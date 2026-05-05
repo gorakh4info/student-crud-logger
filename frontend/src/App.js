@@ -3,6 +3,8 @@ import StudentForm from "./components/StudentForm";
 import StudentList from "./components/StudentList";
 import Toast from "./components/Toast";
 import { logger } from "./utils/logger";
+import StackTrace from "stacktrace-js";
+
 import { sendFeesDueEmail, isEmailConfigured } from "./emailService";
 
 const API = "http://localhost:5000/api/students";
@@ -103,7 +105,9 @@ function App() {
         return res.json();
       })
       .then((updated) => {
-        setStudents((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+        setStudents((prev) =>
+          prev.map((s) => (s.id === updated.id ? updated : s)),
+        );
         logger.info("Updated student", updated);
       })
       .catch((err) => {
@@ -120,7 +124,9 @@ function App() {
       const isCronEntry = /cron/i.test(entry.message || "");
       return !isCronEntry || entry.level === "error";
     });
-    const blob = new Blob([JSON.stringify(filtered, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(filtered, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -161,36 +167,48 @@ function App() {
       const due = allStudents.filter((s) => Number(s.fees) <= 0);
 
       if (due.length === 0) {
-        pushLogRef.current("Check complete — no students with fees ≤ 0.", "#6fcf97");
+        pushLogRef.current(
+          "Check complete — no students with fees ≤ 0.",
+          "#6fcf97",
+        );
         return;
       }
 
-      pushLogRef.current(`Found ${due.length} student(s) with fees ≤ 0. Sending emails…`, "#f2994a");
+      pushLogRef.current(
+        `Found ${due.length} student(s) with fees ≤ 0. Sending emails…`,
+        "#f2994a",
+      );
       await Promise.all(
         due.map(async (s) => {
           const result = await sendFeesDueEmail(s);
           if (result.success) {
             pushLogRef.current(
               `✓ Email sent   → ${s.email}  (${s.name})  | Fees: $${s.fees}`,
-              "#6fcf97"
+              "#6fcf97",
             );
             logger.info("Email sent", { email: s.email, fees: s.fees });
           } else if (result.simulated) {
             pushLogRef.current(
               `⚠ Simulated    → ${s.email}  (${s.name})  | Fees: $${s.fees}  [configure .env]`,
-              "#f2994a"
+              "#f2994a",
             );
           } else {
             pushLogRef.current(
               `✗ Email FAILED → ${s.email}  | ${result.error}`,
-              "#eb5757"
+              "#eb5757",
             );
-            logger.error("Email failed", { email: s.email, error: result.error });
+            logger.error("Email failed", {
+              email: s.email,
+              error: result.error,
+            });
           }
-        })
+        }),
       );
 
-      showToast(`Notified ${due.length} student(s) with outstanding fees`, "info");
+      showToast(
+        `Notified ${due.length} student(s) with outstanding fees`,
+        "info",
+      );
     } catch (err) {
       pushLogRef.current(`✗ Error: ${err.message}`, "#eb5757");
       logger.error("Cron check error", err.message);
@@ -199,15 +217,71 @@ function App() {
 
   // ─── Start / Stop ─────────────────────────────────────────────────────────────
 
-  const startCron = useCallback(() => {
+  // async so we can await StackTrace.fromError() for source-map resolution
+  const startCron = useCallback(async () => {
     if (cronRef.current) return;
-    pushLogRef = null;
-    pushLogRef.current("─── Cron job started ───", "#56ccf2");
-    cronCheckRef.current(); // run immediately
-    cronRef.current = setInterval(() => cronCheckRef.current(), CRON_INTERVAL_MS);
+
+    const startedAt = new Date().toISOString();
+
+    // Both statements are on the SAME SOURCE LINE so that StackTrace resolves
+    // _rootCause's bundle position to the null-assignment line in App.js.
+    let _rootCause;
+    try {
+      _rootCause = new Error();
+      pushLogRef.current = null; // root-cause line
+      pushLogRef.current("─── Cron job started ───", "#56ccf2");
+    } catch (err) {
+      try {
+        // StackTrace.fromError fetches bundle.js.map and resolves each frame
+        // from bundle.js:N:M → { fileName: "App.js", lineNumber: 212, ... }
+        const resolvedFrames = await StackTrace.fromError(_rootCause);
+        const frame =
+          resolvedFrames.find(
+            (f) =>
+              f.fileName?.includes("App.js") ||
+              f.functionName?.includes("startCron"),
+          ) ?? resolvedFrames[0];
+
+        logger.error("startCron: UI log function unavailable", {
+          event: "CRON_START_ERROR",
+          errorName: err.name,
+          errorMessage: err.message,
+          fileName: frame?.fileName ?? null,
+          lineNumber: frame?.lineNumber ?? null,
+          columnNumber: frame?.columnNumber ?? null,
+          functionName: frame?.functionName ?? null,
+          startedAt,
+        });
+        showToast(
+          `Error at ${frame?.fileName}:${frame?.lineNumber} — ${err.message}`,
+          "error",
+        );
+      } catch {
+        // Fallback if source-map fetch fails (e.g. offline / prod build)
+        logger.error("startCron: UI log function unavailable", {
+          event: "CRON_START_ERROR",
+          errorName: err.name,
+          errorMessage: err.message,
+          stack: err.stack ?? null,
+          startedAt,
+        });
+        showToast(`Error: ${err.message}`, "error");
+      }
+    }
+
+    // Cron still starts — setCronActive(true) triggers a re-render which
+    // re-assigns pushLogRef.current = pushLog, so all subsequent ticks log fine.
+    cronCheckRef.current();
+    cronRef.current = setInterval(
+      () => cronCheckRef.current(),
+      CRON_INTERVAL_MS,
+    );
     setCronActive(true);
+    logger.info("Cron job started", {
+      startedAt,
+      intervalMs: CRON_INTERVAL_MS,
+    });
     showToast("Cron job started — checking every 30s", "info");
-    logger.info("Cron job started");
   }, [showToast]);
 
   const stopCron = useCallback(() => {
@@ -237,25 +311,42 @@ function App() {
   return (
     <div style={{ padding: 24, maxWidth: 960, fontFamily: "sans-serif" }}>
       {/* Header row */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 20,
+        }}
+      >
         <h1 style={{ margin: 0 }}>Student Info</h1>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           {/* Email status badge */}
-          <span style={{
-            fontSize: 12,
-            padding: "3px 10px",
-            borderRadius: 12,
-            backgroundColor: isEmailConfigured ? "#e8fde8" : "#fff3cd",
-            color: isEmailConfigured ? "#27ae60" : "#856404",
-            border: `1px solid ${isEmailConfigured ? "#b7dfb8" : "#ffc107"}`,
-          }}>
-            {isEmailConfigured ? "EmailJS: configured" : "EmailJS: not configured (see .env)"}
+          <span
+            style={{
+              fontSize: 12,
+              padding: "3px 10px",
+              borderRadius: 12,
+              backgroundColor: isEmailConfigured ? "#e8fde8" : "#fff3cd",
+              color: isEmailConfigured ? "#27ae60" : "#856404",
+              border: `1px solid ${isEmailConfigured ? "#b7dfb8" : "#ffc107"}`,
+            }}
+          >
+            {isEmailConfigured
+              ? "EmailJS: configured"
+              : "EmailJS: not configured (see .env)"}
           </span>
 
           <button
             onClick={downloadLogs}
-            style={{ padding: "6px 14px", borderRadius: 4, border: "1px solid #aaa", cursor: "pointer", fontSize: 14 }}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 4,
+              border: "1px solid #aaa",
+              cursor: "pointer",
+              fontSize: 14,
+            }}
           >
             Download Logs
           </button>
@@ -277,7 +368,9 @@ function App() {
           </button>
 
           {cronActive && (
-            <span style={{ fontSize: 13, color: "#27ae60" }}>● running (30s)</span>
+            <span style={{ fontSize: 13, color: "#27ae60" }}>
+              ● running (30s)
+            </span>
           )}
         </div>
       </div>
@@ -299,26 +392,54 @@ function App() {
 
       {/* Cron activity log */}
       {cronLogs.length > 0 && (
-        <div style={{ marginTop: 28, borderTop: "1px solid #ddd", paddingTop: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div
+          style={{ marginTop: 28, borderTop: "1px solid #ddd", paddingTop: 16 }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 8,
+            }}
+          >
             <h3 style={{ margin: 0 }}>Cron Activity Log</h3>
             <button
               onClick={() => setCronLogs([])}
-              style={{ fontSize: 12, padding: "2px 10px", borderRadius: 3, border: "1px solid #ccc", cursor: "pointer", background: "none" }}
+              style={{
+                fontSize: 12,
+                padding: "2px 10px",
+                borderRadius: 3,
+                border: "1px solid #ccc",
+                cursor: "pointer",
+                background: "none",
+              }}
             >
               Clear
             </button>
           </div>
-          <div style={{
-            maxHeight: 240,
-            overflowY: "auto",
-            backgroundColor: "#1e1e1e",
-            borderRadius: 6,
-            padding: "10px 14px",
-          }}>
+          <div
+            style={{
+              maxHeight: 240,
+              overflowY: "auto",
+              backgroundColor: "#1e1e1e",
+              borderRadius: 6,
+              padding: "10px 14px",
+            }}
+          >
             {cronLogs.map((entry) => (
-              <div key={entry.id} style={{ fontFamily: "monospace", fontSize: 13, marginBottom: 4, color: entry.color }}>
-                <span style={{ color: "#555", marginRight: 10 }}>[{entry.time}]</span>
+              <div
+                key={entry.id}
+                style={{
+                  fontFamily: "monospace",
+                  fontSize: 13,
+                  marginBottom: 4,
+                  color: entry.color,
+                }}
+              >
+                <span style={{ color: "#555", marginRight: 10 }}>
+                  [{entry.time}]
+                </span>
                 {entry.message}
               </div>
             ))}
