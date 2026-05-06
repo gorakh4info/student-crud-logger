@@ -2,11 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import StudentForm from "./components/StudentForm";
 import StudentList from "./components/StudentList";
 import Toast from "./components/Toast";
-import { logger, logError } from "./utils/logger";
-
-const __filename = "src/App.js";
+import { logger } from "./utils/logger";
 import StackTrace from "stacktrace-js";
-
 import { sendFeesDueEmail, isEmailConfigured } from "./emailService";
 
 const API = "http://localhost:5000/api/students";
@@ -259,18 +256,13 @@ function App() {
 
     const startedAt = new Date().toISOString();
 
-    // Both statements are on the SAME SOURCE LINE so that StackTrace resolves
-    // _rootCause's bundle position to the null-assignment line in App.js.
-    let _rootCause;
     try {
-      _rootCause = new Error();
-      pushLogRef.current = null; // root-cause line
+      pushLogRef.current = null;
       pushLogRef.current("─── Cron job started ───", "#56ccf2");
     } catch (err) {
       try {
-        // StackTrace.fromError fetches bundle.js.map and resolves each frame
-        // from bundle.js:N:M → { fileName: "App.js", lineNumber: 212, ... }
-        const resolvedFrames = await StackTrace.fromError(_rootCause);
+        // Resolve err's stack (the actual TypeError) via source map → App.js:N
+        const resolvedFrames = await StackTrace.fromError(err);
         const frame =
           resolvedFrames.find(
             (f) =>
@@ -278,15 +270,37 @@ function App() {
               f.functionName?.includes("startCron"),
           ) ?? resolvedFrames[0];
 
-        logError("startCron: UI log function unavailable", err, __filename);
+        const resolvedStack =
+          err.toString() +
+          "\n" +
+          resolvedFrames
+            .map(
+              (f) =>
+                `    at ${f.functionName || "<anonymous>"} (${f.fileName}:${f.lineNumber}:${f.columnNumber})`,
+            )
+            .join("\n");
 
+        logger.errorAt("startCron: UI log function unavailable", {
+          event: "CRON_START_ERROR",
+          errorName: err.name,
+          errorMessage: err.message,
+          fileName: frame?.fileName ?? null,
+          lineNumber: frame?.lineNumber ?? null,
+          resolvedStack,
+          startedAt,
+        }, frame?.fileName ?? null);
         showToast(
           `Error at ${frame?.fileName}:${frame?.lineNumber} — ${err.message}`,
           "error",
         );
       } catch {
-        // Fallback if source-map fetch fails (e.g. offline / prod build)
-        logError("startCron: UI log function unavailable", err, __filename);
+        logger.error("startCron: UI log Error 1", {
+          event: "CRON_START_ERROR",
+          errorName: err.name,
+          errorMessage: err.message,
+          note: "source map unavailable; raw stack omitted",
+          startedAt,
+        });
         showToast(`Error: ${err.message}`, "error");
       }
     }
