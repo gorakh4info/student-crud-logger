@@ -2,11 +2,12 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import StudentForm from "./components/StudentForm";
 import StudentList from "./components/StudentList";
 import Toast from "./components/Toast";
-import { logger } from "./utils/logger";
+import { logger, logError } from "./utils/logger";
 import StackTrace from "stacktrace-js";
 import { sendFeesDueEmail, isEmailConfigured } from "./emailService";
 
 const API = "http://localhost:5000/api/students";
+const __filename = "src/App.js";
 const CRON_INTERVAL_MS = 150000; // 30 seconds
 
 function App() {
@@ -53,6 +54,11 @@ function App() {
   }, []);
 
   const addStudent = (student) => {
+    if (!student) {
+      logError("Failed to add student", null, __filename);
+      showToast("Failed to add student");
+      return false;
+    }
     fetch(API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -66,7 +72,7 @@ function App() {
         setStudents((prev) => [...prev, created]);
       })
       .catch((err) => {
-        logger.error("Add failed", err);
+        logError("Failed to add student", err, __filename);
         showToast("Failed to add student");
       });
   };
