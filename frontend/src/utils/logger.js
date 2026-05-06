@@ -1,3 +1,5 @@
+import StackTrace from "stacktrace-js";
+
 const REPO_NAME = "student-crud-logger";
 const LOG_API = "http://localhost:5000/api/logs";
 
@@ -14,6 +16,9 @@ const cleanPath = (raw) => {
     if (webpack) return webpack[1];
     const localhost = raw.match(/localhost:\d+\/(.*)/);
     if (localhost) return localhost[1];
+    // Absolute filesystem path (StackTrace returns these after source-map resolution)
+    const srcPath = raw.match(/\/src\/(.*)/);
+    if (srcPath) return `src/${srcPath[1]}`;
     return raw;
 };
 
@@ -124,24 +129,68 @@ window.onerror = (message, source, lineno, colno, error) => {
     });
 };
 
-// Capture unhandled Promise rejections.
-window.addEventListener("unhandledrejection", (event) => {
+// Capture unhandled Promise rejections with source-map-resolved stacks.
+window.addEventListener("unhandledrejection", async (event) => {
+    const reason = event.reason;
+    let file = getCallerFile();
+    let resolvedStack = reason?.stack ?? null;
+
+    try {
+        if (reason instanceof Error) {
+            const frames = await StackTrace.fromError(reason);
+            const appFrame =
+                frames.find(
+                    (f) =>
+                        f.fileName &&
+                        !f.fileName.includes("node_modules") &&
+                        !f.fileName.includes("bundle.js"),
+                ) ?? frames[0];
+            if (appFrame?.fileName) {
+                file = cleanPath(appFrame.fileName) ?? file;
+            }
+            resolvedStack =
+                reason.toString() +
+                "\n" +
+                frames
+                    .map(
+                        (f) =>
+                            `    at ${f.functionName || "<anonymous>"} (${f.fileName}:${f.lineNumber}:${f.columnNumber})`,
+                    )
+                    .join("\n");
+        }
+    } catch {}
+
     sendLog({
         origin: "frontend",
-        file: getCallerFile(),
+        file,
         repo: REPO_NAME,
         level: "error",
-        message: String(event.reason),
-        data: { stack: event.reason?.stack ?? null },
+        message: String(reason),
+        data: { stack: resolvedStack },
         source: "unhandledrejection",
         time: new Date().toISOString(),
     });
 });
 
+const logAt = (level, message, data, file) => {
+    const entry = {
+        origin: "frontend",
+        file: file ? (cleanPath(file) ?? file) : getCallerFile(),
+        repo: REPO_NAME,
+        level,
+        message,
+        data: serializeData(data),
+        time: new Date().toISOString(),
+    };
+    console[level](entry);
+    sendLog(entry);
+};
+
 export const logger = {
     info: (msg, data) => log("log", msg, data),
     warn: (msg, data) => log("warn", msg, data),
     error: (msg, data) => log("error", msg, data),
+    errorAt: (msg, data, file) => logAt("error", msg, data, file),
 };
 
 // Explicit-file variant — mirrors the backend logError(message, err, file) API.
