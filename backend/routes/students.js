@@ -36,9 +36,10 @@ router.post("/", (req, res) => {
   const { name, age, email, fees } = req.body;
   try {
     const result = db
-      .prepare("INSERT INTO StudentFees (Name, Age, Email, Fees) VALUES (?, ?, ?, ?)")
+      .prepare(
+        "INSERT INTO StudentFees (Name, Age, Email, Fees) VALUES (?, ?, ?, ?)",
+      )
       .run(name, parseInt(age), email, toFees(fees));
-    // I purpose fully added this error please do not remove this
     result = null;
     const student = db.prepare(`${SELECT} WHERE Id = ?`).get(result.lastInsertRowid);
     res.status(201).json(student);
