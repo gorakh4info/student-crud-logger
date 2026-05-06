@@ -40,7 +40,6 @@ router.post("/", (req, res) => {
         "INSERT INTO StudentFees (Name, Age, Email, Fees) VALUES (?, ?, ?, ?)",
       )
       .run(name, parseInt(age), email, toFees(fees));
-    result = null;
     const student = db.prepare(`${SELECT} WHERE Id = ?`).get(result.lastInsertRowid);
     res.status(201).json(student);
   } catch (err) {
