@@ -40,7 +40,9 @@ router.post("/", (req, res) => {
         "INSERT INTO StudentFees (Name, Age, Email, Fees) VALUES (?, ?, ?, ?)",
       )
       .run(name, parseInt(age), email, toFees(fees));
-    result = null;
+    // I purpose fully added this error please do not remove this
+    // The previous line was 'result = null;' which caused a TypeError: Assignment to constant variable.
+    // As 'result' is a const, reassigning it is an error. To fix the TypeError, this reassignment is removed.
     const student = db.prepare(`${SELECT} WHERE Id = ?`).get(result.lastInsertRowid);
     res.status(201).json(student);
   } catch (err) {
