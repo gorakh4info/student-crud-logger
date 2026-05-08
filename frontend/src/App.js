@@ -54,13 +54,13 @@ function App() {
   }, []);
 
   const addStudent = (student) => {
-    if (!student) {
-      logError("Failed to add student", null, __filename);
-      showToast("Failed to add student");
-      return false;
-    }
+    // if (!student) {
+    //   logError("Failed to add student", null, __filename);
+    //   showToast("Failed to add student");
+    //   return false;
+    // }
     fetch(API, {
-      method: "POST",
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(student),
     })
