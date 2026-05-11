@@ -1,6 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
+const fs = require("fs");
+const path = require("path");
+
+const EXPORT_DIR = path.join(__dirname, "..", "..", "logs");
 
 // POST /api/logs — store a log entry sent from the frontend
 router.post("/", (req, res) => {
@@ -22,6 +26,34 @@ router.post("/", (req, res) => {
     res.status(201).json({ ok: true });
   } catch (err) {
     console.error("POST /logs failed:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/logs/export — write filtered logs to C:\V2\logger\
+router.post("/export", (req, res) => {
+  try {
+    const rows = db.prepare("SELECT * FROM Logs ORDER BY Id").all();
+    const logs = rows.map((r) => {
+      let parsedData = null;
+      try { parsedData = r.Data ? JSON.parse(r.Data) : null; } catch { parsedData = { _parseError: true, raw: r.Data }; }
+      return { ...r, data: parsedData };
+    });
+
+    const filtered = logs.filter((entry) => {
+      const isCronEntry = /cron/i.test(entry.Message || "");
+      const level = entry.Level || entry.level;
+      return !isCronEntry || level === "error";
+    });
+
+    fs.mkdirSync(EXPORT_DIR, { recursive: true });
+    const filename = `student-logs-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    const filepath = path.join(EXPORT_DIR, filename);
+    fs.writeFileSync(filepath, JSON.stringify(filtered, null, 2), "utf8");
+
+    res.json({ ok: true, path: filepath, filename });
+  } catch (err) {
+    console.error("POST /logs/export failed:", err);
     res.status(500).json({ error: err.message });
   }
 });

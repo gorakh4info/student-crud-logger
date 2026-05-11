@@ -54,11 +54,6 @@ function App() {
   }, []);
 
   const addStudent = (student) => {
-    // if (!student) {
-    //   logError("Failed to add student", null, __filename);
-    //   showToast("Failed to add student");
-    //   return false;
-    // }
     fetch(API, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -121,30 +116,18 @@ function App() {
   };
 
   const downloadLogs = () => {
-    fetch("http://localhost:5000/api/logs")
+    fetch("http://localhost:5000/api/logs/export", { method: "POST" })
       .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch logs");
+        if (!res.ok) throw new Error("Failed to export logs");
         return res.json();
       })
-      .then((all) => {
-        // For completeCron activity entries, keep only errors.
-        const filtered = all.filter((entry) => {
-          const isCronEntry = /cron/i.test(entry.Message || entry.message || "");
-          const level = entry.Level || entry.level;
-          return !isCronEntry || level === "error";
-        });
-        const blob = new Blob([JSON.stringify(filtered, null, 2)], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `student-logs-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        logger.info("Logs downloaded");
+      .then(({ path: filePath, filename }) => {
+        logger.info("Logs exported", { path: filePath });
+        showToast(`Logs saved to student-crud-logger/logs/${filename}`, "info");
       })
       .catch((err) => {
-        logger.error("Failed to download logs", err);
-        showToast("Failed to download logs");
+        logError("Failed to export logs", err, __filename);
+        showToast("Failed to export logs");
       });
   };
 
